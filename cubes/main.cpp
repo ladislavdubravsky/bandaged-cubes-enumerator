@@ -36,12 +36,12 @@ uint64_t turn_u(uint64_t cube)
 
 uint64_t turn_f(uint64_t cube)
 {
-    return ((cube & UINT64_C(16843008)) << 8) |
-           ((cube & UINT64_C(4294967296)) >> 24) |
-           ((cube & UINT64_C(131072)) << 24) |
-           ((cube & UINT64_C(2207646744576)) >> 8) |
-           ((cube & UINT64_C(17184064512)) << 12) |
-           ((cube & UINT64_C(70368744177664)) >> 36) |
+    return ((cube & UINT64_C(16843008)) << UINT64_C(8)) |
+           ((cube & UINT64_C(4294967296)) >> UINT64_C(24)) |
+           ((cube & UINT64_C(131072)) << UINT64_C(24)) |
+           ((cube & UINT64_C(2207646744576)) >> UINT64_C(8)) |
+           ((cube & UINT64_C(17184064512)) << UINT64_C(12)) |
+           ((cube & UINT64_C(70368744177664)) >> UINT64_C(36)) |
            (cube & UINT64_C(18446671475822623487));
 }
 
@@ -166,9 +166,10 @@ main(int argc, char const *argv[])
         {'L', UINT64_C(2819152146341952)}
     };
 
-    uint64_t alcatraz = 76144522270352976;
-    uint64_t bicube_fuse = 76162217024955968;
-    uint64_t most_shapes = 73324292116317184;
+    uint64_t alcatraz = UINT64_C(76144522270352976);
+    uint64_t bicube_fuse = UINT64_C(76162217024955968);
+    uint64_t bicube_fuse_rot = UINT64_C(73423368414642736);
+    uint64_t most_shapes = UINT64_C(73324292116317184);
 
     graph results = explore(bicube_fuse, &blockers);
     std::cout << "Found shapes: " << results.verts->size() << std::endl;

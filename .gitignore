@@ -3,8 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Visual Studio Code
+# IDEs
 .vscode/
+.idea/
 
 # Build
 cubes/main.exe
