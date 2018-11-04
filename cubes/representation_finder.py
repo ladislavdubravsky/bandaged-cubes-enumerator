@@ -1,6 +1,26 @@
 """ Find mappings of adjacent cubie pairs into 64-bit register positions
 minimizing number of instructions needed for face turn permutations. """
-import numpy as np
+
+
+CYCLES_ALL = [['uFr', 'ubR', 'uBl', 'ufL'], ['uFr', 'Ubr', 'dBr', 'Dfr'],
+              ['Ufl', 'dfL', 'Dfr', 'ufR'], ['ufR', 'uBr', 'ubL', 'uFl'],
+              ['ubR', 'Dbr', 'dbL', 'Ubl'], ['uFl', 'Ubl', 'dBl', 'Dfl'],
+              ['Ufr', 'uBr', 'Dbr', 'dFr'], ['dfL', 'dBl', 'dbR', 'dFr'],
+              ['Ubr', 'dbR', 'Dbl', 'ubL'], ['Ufl', 'uBl', 'Dbl', 'dFl'],
+              ['dFl', 'dbL', 'dBr', 'dfR'], ['ufL', 'Dfl', 'dfR', 'Ufr'],
+              ['uf', 'ur', 'ub', 'ul'], ['fu', 'fr', 'fd', 'fl'],
+              ['ru', 'rb', 'rd', 'rf'], ['df', 'dr', 'db', 'dl'],
+              ['bu', 'br', 'bd', 'bl'], ['lu', 'lb', 'ld', 'lf']]
+# old order:
+# cycles = [['uFr', 'ubR', 'uBl', 'ufL'], ['uFr', 'Ubr', 'dBr', 'Dfr'],
+#           ['ufL', 'Dfl', 'dfR', 'Ufr'], ['dFl', 'dbL', 'dBr', 'dfR'],
+#           ['ubR', 'Dbr', 'dbL', 'Ubl'], ['uFl', 'Ubl', 'dBl', 'Dfl'],
+#           ['Ufr', 'uBr', 'Dbr', 'dFr'], ['dfL', 'dBl', 'dbR', 'dFr'],
+#           ['Ubr', 'dbR', 'Dbl', 'ubL'], ['Ufl', 'uBl', 'Dbl', 'dFl'],
+#           ['ufR', 'uBr', 'ubL', 'uFl'], ['Ufl', 'dfL', 'Dfr', 'ufR'],
+#           ['uf', 'ur', 'ub', 'ul'], ['fu', 'fr', 'fd', 'fl'],
+#           ['ru', 'rb', 'rd', 'rf'], ['df', 'dr', 'db', 'dl'],
+#           ['bu', 'br', 'bd', 'bl'], ['lu', 'lb', 'ld', 'lf']]
 
 
 def search(cycles, maps, **kwargs):
@@ -38,9 +58,12 @@ def place_cycle(cycles_left, currmap, nonfree, facediff, maps, max_diff=17):
     if len(maps) > 100:
         return
     if not cycles_left:
-        if currmap["max"] - currmap["min"] < 64:
-            if check_map(currmap, cycles) < 10:
-                maps.append(currmap)
+        cmin = currmap["min"]
+        if currmap["max"] - cmin < 64:
+            cyc = cycles if len(currmap) < 30 else CYCLES_ALL  # phase2
+            if check_map(currmap, cyc) < 10:
+                del currmap["max"], currmap["min"]
+                maps.append({k: v - cmin for k, v in currmap.items()})
         return
     cycle = cycles_left[0]
     placed = [c for c in enumerate(cycle) if c[1] in currmap]
@@ -146,7 +169,7 @@ def place_cycle(cycles_left, currmap, nonfree, facediff, maps, max_diff=17):
     elif len(placed) == 1:
         p1 = currmap[placed[0][1]]
         i1 = placed[0][0]
-        ds = range(1, max_diff + 1) if not facediff[face] else [facediff[face]]
+        ds = range(1, max_diff + 1) if not facediff[face] else [abs(facediff[face])]
         for d in ds:
             for pos in [[p1 - 3 * d, p1 - 2 * d, p1 - d],
                         [p1 + d, p1 - 2 * d, p1 - d],
@@ -156,19 +179,24 @@ def place_cycle(cycles_left, currmap, nonfree, facediff, maps, max_diff=17):
                     continue
                 for reverse in (0, 1):  # two directions to fill the slots
                     if reverse == 0:
+                        if facediff[face] < 0:
+                            continue
                         newm = {**currmap, toplace_d[(i1 + 1) % 4]: pos[0],
                                 toplace_d[(i1 + 2) % 4]: pos[1],
                                 toplace_d[(i1 + 3) % 4]: pos[2]}
+                        newfd = {**facediff, face: d}
                     else:
+                        if facediff[face] > 0:
+                            continue
                         newm = {**currmap, toplace_d[(i1 + 1) % 4]: pos[2],
                                 toplace_d[(i1 + 2) % 4]: pos[1],
                                 toplace_d[(i1 + 3) % 4]: pos[0]}
+                        newfd = {**facediff, face: -d}
                     width = update_width(newm, pos)
                     if width > 63:
                         continue
                     newnf = nonfree.copy()
                     newnf.update(pos)
-                    newfd = {**facediff, face: d}
                     place_cycle(cycles_left[1:], newm, newnf, newfd, maps)
 
     elif len(placed) == 0:
@@ -181,9 +209,12 @@ def place_cycle(cycles_left, currmap, nonfree, facediff, maps, max_diff=17):
                 newfd = {**facediff, face: d}
                 place_cycle(cycles_left[1:], newm, newnf, newfd, maps)
         else:  # the isolated cycles
-            start = min(nonfree) - max_diff
-            for d in [facediff[face], *list(range(1, max_diff + 1))]:
-                for left in range(start, start + 60):
+            start = currmap["min"] - 60
+            ds = [facediff[face]]
+            if len(cycles_left) < 5:
+                ds += list(range(1, max_diff + 1))
+            for d in ds:
+                for left in range(start, start + 120):
                     pos = [left, left + d, left + 2 * d, left + 3 * d]
                     if any(p in nonfree for p in pos):
                         continue
@@ -198,36 +229,48 @@ def place_cycle(cycles_left, currmap, nonfree, facediff, maps, max_diff=17):
 
 def check_map(mapping, cycles, printout=False):
     """ Score mapping and optionally print it out in a comprehensive format. """
-    m = min(mapping.values())
     score = 0
     for f in "ufrdlb":
-        pdirs, diffs = [], set()
+        diffs = set()
         for c in [c for c in cycles if all(f in pair for pair in c)]:
             inds = [mapping[p] for p in c]
-            inds = np.array([i - m for i in inds])
-            pdir = len([i for i in np.roll(inds, 1) - inds if i > 0])
             sind = sorted(inds)
             diff = sind[1] - sind[0]
             diffs.add(diff)
             if printout:
-                print(c, inds, 'dir:', pdir, 'diff:', diff)
-            pdirs.append(pdir)
+                print(c, inds, 'diff:', diff)
         score += len(diffs)
     return score
 
 
+def gencode_mapping(mapping, cycles):
+    """ Generate code for enumerator: mapping dictionary literal """
+    for f in "ufrdlb":
+        for c in [c for c in cycles if all(f in pair for pair in c)]:
+            sortedc = sorted(c, key=mapping.get)
+            cyc = ', '.join('{0}: {1}'.format(p, mapping[p]) for p in sortedc)
+            print(cyc)
+
+
 # calculation of optimal placements
 maps = []
-cycles = [['uFr', 'ubR', 'uBl', 'ufL'], ['uFr', 'Ubr', 'dBr', 'Dfr'],
-          ['ufL', 'Dfl', 'dfR', 'Ufr'], ['dFl', 'dbL', 'dBr', 'dfR'],
-          ['ubR', 'Dbr', 'dbL', 'Ubl'], ['uFl', 'Ubl', 'dBl', 'Dfl'],
-          ['dFr', 'Dbr', 'uBr', 'Ufr'], ['dFr', 'dbR', 'dBl', 'dfL'],
-          ['ubL', 'Dbl', 'dbR', 'Ubr'], ['dFl', 'Dbl', 'uBl', 'Ufl'],
-          ['uFl', 'ubL', 'uBr', 'ufR'], ['ufR', 'Dfr', 'dfL', 'Ufl'],
-          ['uf', 'ur', 'ub', 'ul'], ['fu', 'fr', 'fd', 'fl'],
-          ['ru', 'rb', 'rd', 'rf'], ['df', 'dr', 'db', 'dl'],
-          ['bu', 'br', 'bd', 'bl'], ['lu', 'lb', 'ld', 'lf']]
+cycles = CYCLES_ALL[:12]
 search(cycles, maps, max_diff=21)
 print("Min score:", min([check_map(m, cycles) for m in maps]))
 check_map(maps[0], cycles, printout=True)
+gencode_mapping(maps[0], cycles)
 
+# 2nd phase
+cycles2 = CYCLES_ALL[12:]
+vals = maps[0].values()
+maps2 = []
+place_cycle(cycles2,
+            {"max": max(vals), "min": min(vals), **maps[0]},
+            set(vals),
+            {'u': 2, 'f': 9, 'r': 14, 'd': 4, 'l': 8, 'b': 9},
+            maps2, max_diff=21)
+len(maps2)
+min([check_map(m, [*cycles, *cycles2]) for m in maps2])
+
+# generate some Python and C++ code for enumerator based on selected mapping
+gencode_mapping(maps2[0], [*cycles, *cycles2])
