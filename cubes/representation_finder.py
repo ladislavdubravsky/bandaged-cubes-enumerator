@@ -39,7 +39,7 @@ def update_width(mapping, pos):
     return mapping["max"] - mapping["min"]
 
 
-def place_cycle(cycles_left, currmap, nonfree, facediff, maps, max_diff=17):
+def place_cycle(cycles_left, currmap, nonfree, facediff, maps, max_diff=21):
     """
     Take partial assignment of bit offsets (integers 0..63) and try to place
     pairs of a next cycle. If all pairs are placed reasonably well, add mapping
@@ -61,7 +61,7 @@ def place_cycle(cycles_left, currmap, nonfree, facediff, maps, max_diff=17):
         cmin = currmap["min"]
         if currmap["max"] - cmin < 64:
             cyc = cycles if len(currmap) < 30 else CYCLES_ALL  # phase2
-            if check_map(currmap, cyc) < 10:
+            if check_map(currmap, cyc) < 12:
                 del currmap["max"], currmap["min"]
                 maps.append({k: v - cmin for k, v in currmap.items()})
         return
@@ -209,12 +209,12 @@ def place_cycle(cycles_left, currmap, nonfree, facediff, maps, max_diff=17):
                 newfd = {**facediff, face: d}
                 place_cycle(cycles_left[1:], newm, newnf, newfd, maps)
         else:  # the isolated cycles
-            start = currmap["min"] - 60
+            start = currmap["min"] - 40
             ds = [facediff[face]]
-            if len(cycles_left) < 5:
+            if len(cycles_left) < 6:
                 ds += list(range(1, max_diff + 1))
             for d in ds:
-                for left in range(start, start + 120):
+                for left in range(start, start + 80):
                     pos = [left, left + d, left + 2 * d, left + 3 * d]
                     if any(p in nonfree for p in pos):
                         continue
@@ -243,22 +243,87 @@ def check_map(mapping, cycles, printout=False):
     return score
 
 
-def gencode_mapping(mapping, cycles):
-    """ Generate code for enumerator: mapping dictionary literal """
-    for f in "ufrdlb":
-        for c in [c for c in cycles if all(f in pair for pair in c)]:
+def gencode(mapping, cycles):
+    """ Generate parts of code for enumerator based on chosen mapping. """
+    map_code = "MAPPING = {"
+    turn_code = ""
+
+    for face in "ufrdlb":
+        shifts = {}
+        facecycles = [c for c in cycles if all(face in pair for pair in c)]
+        for c in facecycles:
             sortedc = sorted(c, key=mapping.get)
-            cyc = ', '.join('{0}: {1}'.format(p, mapping[p]) for p in sortedc)
-            print(cyc)
+            map_code += ', '.join('"{0}": {1}'.format(p, mapping[p]) for p in sortedc)
+            map_code += ',\n' + 11*" "
+            diff = mapping[sortedc[0]] - mapping[sortedc[1]]
+            shifts[diff] = (shifts.get(diff, 0)
+                            + sum(2**mapping[sortedc[i]] for i in [0, 1, 2]))
+            shifts[-3*diff] = shifts.get(-3*diff, 0) + 2**mapping[sortedc[3]]
+
+        turn_face = "def turn_{0}(cube):\n    return np.bitwise_or.reduce([{1}])"
+        shift_code = "\n        np.{0}_shift(np.bitwise_and(cube, np.uint64({1})), np.uint64({2})),"
+        transf = ""
+        for s, mask in shifts.items():
+            transf += shift_code.format("left" if s < 0 else "right", mask, abs(s))
+        resti = set(range(64)) - set([mapping[p] for c in facecycles for p in c])
+        rest = sum(2**i for i in resti)
+        transf += "\n        np.bitwise_and(cube, np.uint64({0}))".format(rest)
+        turn_face = turn_face.format(face, transf)
+        turn_code += "\n\n" + turn_face
+        
+    map_code = map_code[:-13] + '}'
+    return {"map": map_code, "turn": turn_code}
+
+
+def gencode_cpp(mapping, cycles):
+    """ Generate parts of code for enumerator based on chosen mapping, C++. """
+    turn_code = ""
+
+    for face in "ufrdlb":
+        shifts = {}
+        facecycles = [c for c in cycles if all(face in pair for pair in c)]
+        for c in facecycles:
+            sortedc = sorted(c, key=mapping.get)
+            diff = mapping[sortedc[0]] - mapping[sortedc[1]]
+            shifts[diff] = (shifts.get(diff, 0)
+                            + sum(2 ** mapping[sortedc[i]] for i in [0, 1, 2]))
+            shifts[-3 * diff] = shifts.get(-3 * diff, 0) + 2 ** mapping[
+                sortedc[3]]
+
+        turn_face = "uint64_t turn_{0}(uint64_t cube)\n{{\n    return {1};"
+        shift_code = "\n        ((cube & UINT64_C({1})) {0} {2}) |"
+        transf = ""
+        for s, mask in shifts.items():
+            transf += shift_code.format("<<" if s < 0 else ">>", mask, abs(s))
+        resti = set(range(64)) - set([mapping[p] for c in facecycles for p in c])
+        rest = sum(2**i for i in resti)
+        transf += "\n        (cube & UINT64_C({0}))".format(rest)
+        turn_face = turn_face.format(face, transf)
+        turn_code += turn_face + "\n}\n\n"
+
+    blockers = """
+    std::map<char, uint64_t> blockers {{
+        {{'U', UINT64_C({0})}},
+        {{'F', UINT64_C({1})}},
+        {{'R', UINT64_C({2})}},
+        {{'D', UINT64_C({3})}},
+        {{'B', UINT64_C({4})}},
+        {{'L', UINT64_C({5})}}
+    }};"""
+    turnable = {}
+    for f in 'UFRDBL':
+        turnable[f] = sum(2**v for k, v in mapping.items() if f in k or
+                          (len(k) == 2 and f.lower() == k[1]))
+    blockers = blockers.format(*[turnable[f] for f in 'UFRDBL'])
+    return {"turn": turn_code, "blockers": blockers}
 
 
 # calculation of optimal placements
 maps = []
 cycles = CYCLES_ALL[:12]
-search(cycles, maps, max_diff=21)
+search(cycles, maps)
 print("Min score:", min([check_map(m, cycles) for m in maps]))
 check_map(maps[0], cycles, printout=True)
-gencode_mapping(maps[0], cycles)
 
 # 2nd phase
 cycles2 = CYCLES_ALL[12:]
@@ -268,9 +333,13 @@ place_cycle(cycles2,
             {"max": max(vals), "min": min(vals), **maps[0]},
             set(vals),
             {'u': 2, 'f': 9, 'r': 14, 'd': 4, 'l': 8, 'b': 9},
-            maps2, max_diff=21)
+            maps2)
 len(maps2)
-min([check_map(m, [*cycles, *cycles2]) for m in maps2])
+min([check_map(m, CYCLES_ALL) for m in maps2])
 
 # generate some Python and C++ code for enumerator based on selected mapping
-gencode_mapping(maps2[0], [*cycles, *cycles2])
+code = gencode(maps2[0], CYCLES_ALL)
+print(code["turn"])
+code_cpp = gencode_cpp(maps2[0], CYCLES_ALL)
+print(code_cpp["turn"])
+print(code_cpp["blockers"])
