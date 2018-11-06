@@ -26,67 +26,65 @@ struct graph {
 
 uint64_t turn_u(uint64_t cube)
 {
-    return ((cube & UINT64_C(11010069)) << 2) |
-           ((cube & UINT64_C(33554496)) >> 6) |
-           ((cube & UINT64_C(4398046511104)) << 6) |
-           ((cube & UINT64_C(369435906932736)) >> 2) |
-           (cube & UINT64_C(18446370239711543210));
+    return 
+        ((cube & UINT64_C(92358987743253)) << 2) |
+        ((cube & UINT64_C(281475010265152)) >> 6) |
+        (cube & UINT64_C(18446370239711543210));
 }
 
 
 uint64_t turn_f(uint64_t cube)
 {
-    return ((cube & UINT64_C(16843008)) << UINT64_C(8)) |
-           ((cube & UINT64_C(4294967296)) >> UINT64_C(24)) |
-           ((cube & UINT64_C(131072)) << UINT64_C(24)) |
-           ((cube & UINT64_C(2207646744576)) >> UINT64_C(8)) |
-           ((cube & UINT64_C(17184064512)) << UINT64_C(12)) |
-           ((cube & UINT64_C(70368744177664)) >> UINT64_C(36)) |
-           (cube & UINT64_C(18446671475822623487));
+    return 
+        ((cube & UINT64_C(806882304)) << 9) |
+        ((cube & UINT64_C(412316860416)) >> 27) |
+        ((cube & UINT64_C(281483566907392)) << 15) |
+        ((cube & UINT64_C(9223372036854775808)) >> 45) |
+        (cube & UINT64_C(9223090140164125695));
 }
 
 
 uint64_t turn_r(uint64_t cube)
 {
-    return ((cube & UINT64_C(806882304)) << 9) |
-           ((cube & UINT64_C(412316860416)) >> 27) |
-           ((cube & UINT64_C(131072)) << 27) |
-           ((cube & UINT64_C(17626612891648)) >> 9) |
-           (cube & UINT64_C(18446726033972786175));
+    return 
+        ((cube & UINT64_C(567382630219776)) << 14) |
+        ((cube & UINT64_C(9295429630892703744)) >> 42) |
+        ((cube & UINT64_C(42)) << 2) |
+        ((cube & UINT64_C(128)) >> 6) |
+        (cube & UINT64_C(9150747060186627925));
 }
 
 
 uint64_t turn_d(uint64_t cube)
 {
-    return ((cube & UINT64_C(4473378)) << 4) |
-           ((cube & UINT64_C(67117056)) >> 12) |
-           ((cube & UINT64_C(137438953472)) << 12) |
-           ((cube & UINT64_C(600333348765696)) >> 4) |
-           (cube & UINT64_C(18446143602850242013));
+    return 
+        ((cube & UINT64_C(187604175962112)) << 4) |
+        ((cube & UINT64_C(2814749834215424)) >> 12) |
+        (cube & UINT64_C(18443741719699374079));
 }
 
 
 uint64_t turn_l(uint64_t cube)
 {
-    return ((cube & UINT64_C(1127000492212224)) << 10) |
-           ((cube & UINT64_C(1152921504606846976)) >> 30) |
-           ((cube & UINT64_C(281483566907392)) << 15) |
-           ((cube & UINT64_C(9223372036854775808)) >> 45) |
-           ((cube & UINT64_C(8388608)) << 33) |
-           ((cube & UINT64_C(72092795589885952)) >> 11) |
-           (cube & UINT64_C(7996949252590534655));
+    return 
+        ((cube & UINT64_C(8640463104)) << 8) |
+        ((cube & UINT64_C(2203318222848)) >> 24) |
+        ((cube & UINT64_C(17184064512)) << 12) |
+        ((cube & UINT64_C(70368744177664)) >> 36) |
+        (cube & UINT64_C(18446671475822623487));
 }
 
 
 uint64_t turn_b(uint64_t cube)
 {
-    return ((cube & UINT64_C(150083337191424)) << 4) |
-           ((cube & UINT64_C(2251799813685248)) >> 12) |
-           ((cube & UINT64_C(562984315256832)) << 14) |
-           ((cube & UINT64_C(9223372036854775808)) >> 42) |
-           ((cube & UINT64_C(16384)) << 42) |
-           ((cube & UINT64_C(72061992352874496)) >> 14) |
-           (cube & UINT64_C(9148345177035751423));
+    return 
+        ((cube & UINT64_C(34426978304)) << 9) |
+        ((cube & UINT64_C(17592186044416)) >> 27) |
+        ((cube & UINT64_C(35201560346624)) << 11) |
+        ((cube & UINT64_C(72057594037927936)) >> 33) |
+        ((cube & UINT64_C(1127000492212224)) << 10) |
+        ((cube & UINT64_C(1152921504606846976)) >> 30) |
+        (cube & UINT64_C(17220585146399195135));
 }
 
 
@@ -158,16 +156,16 @@ main(int argc, char const *argv[])
     std::cout << "Started program..." << std::endl;
 
     std::map<char, uint64_t> blockers {
-        {'U', UINT64_C(9223372605132769536)},
-        {'F', UINT64_C(1153238438901186563)},
-        {'R', UINT64_C(81363862634532)},
-        {'D', UINT64_C(73324274936448000)},
-        {'B', UINT64_C(18829146325520)},
-        {'L', UINT64_C(2819152146341952)}
+        {'U', UINT64_C(9295429631966579970)},
+        {'F', UINT64_C(567902088462465)},
+        {'R', UINT64_C(62672164618244)},
+        {'D', UINT64_C(1125960858468384)},
+        {'B', UINT64_C(213305257967640)},
+        {'L', UINT64_C(1155455191789600832)}
     };
 
     uint64_t alcatraz = UINT64_C(76144522270352976);
-    uint64_t bicube_fuse = UINT64_C(76162217024955968);
+    uint64_t bicube_fuse = UINT64_C(1156723642485260360);
     uint64_t bicube_fuse_rot = UINT64_C(73423368414642736);
     uint64_t most_shapes = UINT64_C(73324292116317184);
 
@@ -176,7 +174,7 @@ main(int argc, char const *argv[])
     std::cout << "Found edges: " << results.edges->size() << std::endl;
     //for(auto e : *results.verts) 
     //    std::cout << e << std::endl;
-    graph_to_file(results, "C:\\temp\\graph.csv");
+    graph_to_file(results, "C:\\temp\\graph_cpp.csv");
 
     delete results.verts;
     delete results.edges;
