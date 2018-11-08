@@ -73,9 +73,9 @@ def enumerate_analytic():
     p32c = 1 + 2*p22c*p2 + p3*p3c - p2**2 - 2*p2**1 + 1
     p322 = 1 + 2*p32*p32c + 2*p222*p22 - p3**3 - 4*p2**2*p22c*p22 - p22**2*p22c + 2*p2**3 + 2*p2**5 - 1
     p33c = 1 + p32c*p3
-    p332 = 1 + p33*p33c + p322*p32 - p32*p32c*p3**2 # should be 54354
+    p332 = 1 + p33*p33c + p322*p32 - p32*p32c*p3**2
     p333 = 1 + p332*p33
-    return p333 # 7446498
+    return p333  # 6473251
 
 
 def get_slots(pair):
@@ -146,19 +146,136 @@ exec(into_bitarray_gencode(MAPPING))
 def from_bitarray(bitarray, mapping, pprint=True):
     """ Changes bitarray representation of bandage shape into human readable
     cubelist representation. """
+    # retrieve list of glued pairs
     glued_pairs = []
     inv = {v: k for k, v in mapping.items()}
-    for i in range(64):  # retrieve list of glued pairs
+    for i in range(64):
         if np.bitwise_and(bitarray, np.uint64(2**i)) != 0:
             glued_pairs.append(inv[i])
+
+    # merge into blocks
     cubelist = np.array(range(1, 28))
     for pair in glued_pairs:
         s1, s2 = get_slots(pair)
         block1 = np.where(cubelist == cubelist[s1])[0]
-        cubelist[block1] = cubelist[s2]  # merge blocks
+        cubelist[block1] = cubelist[s2]
+
+    # re-number blocks in reading order
+    blockno = 1
+    renumber = {}
+    for v in cubelist:
+        if v in renumber:
+            continue
+        else:
+            renumber[v] = blockno
+            blockno += 1
+    cubelist = [renumber[b] for b in cubelist]
+
     if pprint:  # pretty print
         for i, block in enumerate(cubelist):
             if i % 3 == 0:
                 print("\n", ((8 - i // 3) % 3)*" ", end="")
             print(str(block).zfill(2), end=" ")
-    return list(cubelist)
+    return cubelist
+
+
+def split(clist, res, cmax):
+    """
+    Keep recursively splitting fully bandaged (isomorphic to 1x1) 3x3 cube by
+    planes to enumerate all interesting bandaged cubes.
+    :param clist: cubelist representation of bandage shape
+    :param res: reference to set with enumerated cubelists in bitarray
+        representation
+    :param cmax: number of blocks in current cubelist
+    """
+    def split_to_blocks(block1, clist, res, cmax):
+        """ Try to add result to hash set and continue splitting. """
+        newclist = np.array(clist)
+        newclist[block1] = cmax + 1
+        newcl_b = into_bitarray_fast(newclist)
+        if newcl_b not in res:
+            res.add(newcl_b)
+            split(newclist, res, cmax + 1)
+
+    if len(res) % 100000 == 0:
+        print(len(res))
+    for i in range(1, cmax + 1):
+        block = np.where(clist == i)[0]
+        lb = block.size
+        if lb == 27:  # 333 starting block
+            # into 33 and 332
+            newb1 = block[:9]
+            split_to_blocks(newb1, clist, res, cmax)
+        elif lb == 18:  # 332 block
+            # into 33s
+            newb1 = block[:9]
+            split_to_blocks(newb1, clist, res, cmax)
+            # into 32 and 322
+            newb1 = block[::3]
+            split_to_blocks(newb1, clist, res, cmax)
+        elif lb == 12:  # 322 block
+            # into 32s
+            newb1 = block[::2]
+            split_to_blocks(newb1, clist, res, cmax)
+            newb1 = block[:6]
+            split_to_blocks(newb1, clist, res, cmax)
+            # into 22 and 222
+            newb1 = block[[4, 5, 10, 11]]
+            split_to_blocks(newb1, clist, res, cmax)
+            newb1 = block[[0, 1, 6, 7]]
+            split_to_blocks(newb1, clist, res, cmax)
+        elif lb == 9:  # 33 block
+            # into 3 and 32
+            newb1 = block[::3]  # aligned with the 332 vertical cut
+            split_to_blocks(newb1, clist, res, cmax)
+        elif lb == 8:  # 222 block
+            # into 22s
+            newb1 = block[:4]
+            split_to_blocks(newb1, clist, res, cmax)
+            newb1 = block[::2]
+            split_to_blocks(newb1, clist, res, cmax)
+            newb1 = block[[0, 1, 4, 5]]
+            split_to_blocks(newb1, clist, res, cmax)
+        elif lb == 6:  # 32 block
+            if (block[0] + 2 == block[1] + 1 == block[2] or  # orientation 1
+                    block[0] + 6 == block[1] + 3 == block[2]):  # orientation 2
+                # into 2 and 22
+                newb1 = block[[0, 3]]
+                split_to_blocks(newb1, clist, res, cmax)
+                newb1 = block[[2, 5]]
+                split_to_blocks(newb1, clist, res, cmax)
+                # into 3s
+                newb1 = block[:3]
+                split_to_blocks(newb1, clist, res, cmax)
+            elif block[1] + 2 == block[2]:  # orientation 3
+                # into 2 and 22
+                newb1 = block[:2]
+                split_to_blocks(newb1, clist, res, cmax)
+                newb1 = block[:4]
+                split_to_blocks(newb1, clist, res, cmax)
+                # into 3s
+                newb1 = block[::2]
+                split_to_blocks(newb1, clist, res, cmax)
+            else:
+                raise Exception("Unexpected 32 block orientation!")
+        elif lb == 4:  # 22 block
+            # into 2s
+            newb1 = block[:2]
+            split_to_blocks(newb1, clist, res, cmax)
+            newb1 = block[::2]
+            split_to_blocks(newb1, clist, res, cmax)
+        elif lb == 3:  # 3 block
+            # into 1 and 2
+            newb1 = block[:2]
+            split_to_blocks(newb1, clist, res, cmax)
+            newb1 = block[1:]
+            split_to_blocks(newb1, clist, res, cmax)
+        elif lb == 2:  # 2 block
+            # into 1 and 1
+            newb1 = block[[0]]
+            split_to_blocks(newb1, clist, res, cmax)
+
+
+res = set()
+split(np.ones(27, dtype=np.uint8), res, 1)
+print(len(res))
