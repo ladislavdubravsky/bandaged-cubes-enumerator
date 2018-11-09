@@ -276,6 +276,96 @@ def split(clist, res, cmax):
             split_to_blocks(newb1, clist, res, cmax)
 
 
-res = set()
-split(np.ones(27, dtype=np.uint8), res, 1)
-print(len(res))
+# generated functions for face turns
+def turn_u(cube):
+    return np.bitwise_or.reduce([
+        np.left_shift(np.bitwise_and(cube, np.uint64(92358987743253)), np.uint64(2)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(281475010265152)), np.uint64(6)),
+        np.bitwise_and(cube, np.uint64(18446370239711543210))])
+
+
+def turn_f(cube):
+    return np.bitwise_or.reduce([
+        np.left_shift(np.bitwise_and(cube, np.uint64(806882304)), np.uint64(9)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(412316860416)), np.uint64(27)),
+        np.left_shift(np.bitwise_and(cube, np.uint64(281483566907392)), np.uint64(15)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(9223372036854775808)), np.uint64(45)),
+        np.bitwise_and(cube, np.uint64(9223090140164125695))])
+
+
+def turn_r(cube):
+    return np.bitwise_or.reduce([
+        np.left_shift(np.bitwise_and(cube, np.uint64(567382630219776)), np.uint64(14)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(9295429630892703744)), np.uint64(42)),
+        np.left_shift(np.bitwise_and(cube, np.uint64(42)), np.uint64(2)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(128)), np.uint64(6)),
+        np.bitwise_and(cube, np.uint64(9150747060186627925))])
+
+
+def turn_d(cube):
+    return np.bitwise_or.reduce([
+        np.left_shift(np.bitwise_and(cube, np.uint64(187604175962112)), np.uint64(4)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(2814749834215424)), np.uint64(12)),
+        np.bitwise_and(cube, np.uint64(18443741719699374079))])
+
+
+def turn_l(cube):
+    return np.bitwise_or.reduce([
+        np.left_shift(np.bitwise_and(cube, np.uint64(8640463104)), np.uint64(8)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(2203318222848)), np.uint64(24)),
+        np.left_shift(np.bitwise_and(cube, np.uint64(17184064512)), np.uint64(12)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(70368744177664)), np.uint64(36)),
+        np.bitwise_and(cube, np.uint64(18446671475822623487))])
+
+
+def turn_b(cube):
+    return np.bitwise_or.reduce([
+        np.left_shift(np.bitwise_and(cube, np.uint64(34426978304)), np.uint64(9)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(17592186044416)), np.uint64(27)),
+        np.left_shift(np.bitwise_and(cube, np.uint64(35201560346624)), np.uint64(11)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(72057594037927936)), np.uint64(33)),
+        np.left_shift(np.bitwise_and(cube, np.uint64(1127000492212224)), np.uint64(10)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(1152921504606846976)), np.uint64(30)),
+        np.bitwise_and(cube, np.uint64(17220585146399195135))])
+
+
+def turn(face, cube):
+    if face == 'U':
+        return turn_u(cube)
+    if face == 'F':
+        return turn_f(cube)
+    if face == 'R':
+        return turn_r(cube)
+    if face == 'D':
+        return turn_d(cube)
+    if face == 'L':
+        return turn_l(cube)
+    if face == 'B':
+        return turn_b(cube)
+
+
+def explore(initcube, blockers):
+    """ Breadth-first explore puzzle from given bandage state. """
+    verts, edges, tovisit = set(), [], [initcube]
+    edgelabels = {}
+    cube2int, int2cube = {}, {}
+    cube2int[initcube] = 0
+    int2cube[0] = initcube
+    counter = 0
+
+    while tovisit:
+        cube = tovisit.pop(0)
+        verts.add(cube)
+        for face in 'UDRLFB':
+            if np.bitwise_and(cube, blockers[face]) == 0:
+                new = turn(face, cube)
+                if new not in verts and new not in tovisit:
+                    tovisit.append(new)
+                    counter += 1
+                    cube2int[new] = counter
+                    int2cube[counter] = new
+                newedge = (cube2int[cube], cube2int[new])
+                edges.append(newedge)
+                edgelabels[newedge] = face
+
+    return verts, edges, edgelabels, int2cube, cube2int
