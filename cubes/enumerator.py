@@ -1,5 +1,6 @@
 import numpy as np
 import csv
+from collections import deque
 
 # mapping of pairs to bitarray positions found by backtracking optimizer
 MAPPING = {"uFr": 42, "ubR": 44, "uBl": 46, "ufL": 48,
@@ -13,13 +14,13 @@ MAPPING = {"uFr": 42, "ubR": 44, "uBl": 46, "ufL": 48,
            "ru": 1, "rb": 3, "rd": 5, "rf": 7,
            "dfL": 37, "dBl": 41, "dbR": 45, "dFr": 49,
            "dBr": 14, "dfR": 18, "dFl": 22, "dbL": 26,
-           "df": 39, "dr": 43, "db": 47, "dl": 51,
+           "df": 39, "dl": 43, "db": 47, "dr": 51,
            "Ubl": 17, "uFl": 25, "Dfl": 33, "dBl": 41,
            "Ufl": 10, "dFl": 22, "Dbl": 34, "uBl": 46,
-           "lu": 8, "lb": 16, "ld": 24, "lf": 32,
+           "ld": 8, "lb": 16, "lu": 24, "lf": 32,
            "Ubl": 17, "dbL": 26, "Dbr": 35, "ubR": 44,
            "ubL": 23, "Dbl": 34, "dbR": 45, "Ubr": 56,
-           "bu": 30, "br": 40, "bd": 50, "bl": 60}
+           "bd": 30, "br": 40, "bu": 50, "bl": 60}
 
 # bit masks for checking face turnability
 TURNABLE = {}
@@ -286,10 +287,10 @@ def turn_u(cube):
 
 def turn_f(cube):
     return np.bitwise_or.reduce([
-        np.left_shift(np.bitwise_and(cube, np.uint64(806882304)), np.uint64(9)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(412316860416)), np.uint64(27)),
         np.left_shift(np.bitwise_and(cube, np.uint64(281483566907392)), np.uint64(15)),
         np.right_shift(np.bitwise_and(cube, np.uint64(9223372036854775808)), np.uint64(45)),
+        np.left_shift(np.bitwise_and(cube, np.uint64(806882304)), np.uint64(9)),
+        np.right_shift(np.bitwise_and(cube, np.uint64(412316860416)), np.uint64(27)),
         np.bitwise_and(cube, np.uint64(9223090140164125695))])
 
 
@@ -345,8 +346,8 @@ def turn(face, cube):
 
 
 def explore(initcube, blockers):
-    """ Breadth-first explore puzzle from given bandage state. """
-    verts, edges, tovisit = set(), [], [initcube]
+    """ Breadth-first explore given puzzle from given bandage state. """
+    verts, edges, tovisit = set(), [], deque([initcube])
     edgelabels = {}
     cube2int, int2cube = {}, {}
     cube2int[initcube] = 0
@@ -354,7 +355,7 @@ def explore(initcube, blockers):
     counter = 0
 
     while tovisit:
-        cube = tovisit.pop(0)
+        cube = tovisit.popleft()
         verts.add(cube)
         for face in 'UDRLFB':
             if np.bitwise_and(cube, blockers[face]) == 0:
@@ -369,3 +370,20 @@ def explore(initcube, blockers):
                 edgelabels[newedge] = face
 
     return verts, edges, edgelabels, int2cube, cube2int
+
+
+def explore_fast(initcube, blockers, res):
+    """ Version for use in enumeration of equivalence classes.
+        :param res: reference to list of cubes to (try to) drop discovered
+                    cubes from """
+    verts, tovisit = set(), deque([initcube])
+    while tovisit:
+        cube = tovisit.popleft()
+        verts.add(cube)
+        res.discard(cube)
+        for face in 'UDRLFB':
+            if np.bitwise_and(cube, blockers[face]) == 0:
+                new = turn(face, cube)
+                if new not in verts and new not in tovisit:
+                    tovisit.append(new)
+    return verts
