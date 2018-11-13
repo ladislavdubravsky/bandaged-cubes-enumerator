@@ -36,10 +36,10 @@ uint64_t turn_u(uint64_t cube)
 uint64_t turn_f(uint64_t cube)
 {
     return 
-        ((cube & UINT64_C(806882304)) << 9) |
-        ((cube & UINT64_C(412316860416)) >> 27) |
         ((cube & UINT64_C(281483566907392)) << 15) |
         ((cube & UINT64_C(9223372036854775808)) >> 45) |
+        ((cube & UINT64_C(806882304)) << 9) |
+        ((cube & UINT64_C(412316860416)) >> 27) |
         (cube & UINT64_C(9223090140164125695));
 }
 
@@ -121,8 +121,7 @@ graph explore(uint64_t initcube, std::map<char, uint64_t>* blockers)
                 if (verts->find(newcube) == verts->end()
                     && std::find(to_visit.begin(),
                                  to_visit.end(),
-                                 newcube) == to_visit.end())
-                {
+                                 newcube) == to_visit.end()) {
                     to_visit.push_back(newcube);
                     counter++;
                     cube2int[newcube] = counter;
@@ -138,10 +137,46 @@ graph explore(uint64_t initcube, std::map<char, uint64_t>* blockers)
 }
 
 
+void explore_fast(uint64_t initcube, std::map<char, uint64_t>* blockers)
+{
+    std::deque<uint64_t> to_visit(1, initcube);
+    std::unordered_set<uint64_t>* verts = new std::unordered_set<uint64_t>;
+
+    while (!to_visit.empty()) {
+        uint64_t cube = to_visit.front();
+        to_visit.pop_front();
+        verts->insert(cube);
+        for(char& face : FACES) {
+            if ((cube & (*blockers)[face]) == 0) {
+                uint64_t newcube = turn(face, cube);
+                if (verts->find(newcube) == verts->end()
+                    && std::find(to_visit.begin(),
+                                 to_visit.end(),
+                                 newcube) == to_visit.end()) {
+                    to_visit.push_back(newcube);
+                }
+            }
+        }
+    }
+}
+
+
+void explore_all(std::vector<uint64_t>* cubes, std::map<char, uint64_t>* blockers)
+{
+    int cnt = 0;
+    for(auto c : *cubes) {
+        explore_fast(c, blockers);
+        if (cnt % 100 == 0) {
+            std::cout << cnt << std::endl;
+        }
+        cnt++;
+    }
+}
+
+
 void graph_to_file(graph results, std::string path)
 {
-    std::ofstream file;
-    file.open(path);
+    std::ofstream file(path);
     for(auto e : *results.edges) {
         file << e.first << ","
              << e.second << ","
@@ -151,34 +186,50 @@ void graph_to_file(graph results, std::string path)
 }
 
 
+std::vector<uint64_t>* load_cubes(std::string path)
+{
+    std::vector<uint64_t>* cubes = new std::vector<uint64_t>;
+    std::ifstream file(path);
+    uint64_t c;
+    std::cout << "Gonna load from file..." << path << std::endl;
+    if (!file) {
+        std::cout << "Trouble with file..." << std::endl;
+    }
+    while (file >> c) {
+        //std::cout << c << std::endl;
+        cubes->push_back(c);
+    }
+    file.close();
+    return cubes;
+}
+
+
 main(int argc, char const *argv[])
 {
     std::cout << "Started program..." << std::endl;
 
     std::map<char, uint64_t> blockers {
-        {'U', UINT64_C(9295429631966579970)},
+        {'U', UINT64_C(9296555530816457730)},
         {'F', UINT64_C(567902088462465)},
-        {'R', UINT64_C(62672164618244)},
-        {'D', UINT64_C(1125960858468384)},
+        {'R', UINT64_C(2305675885281284)},
+        {'D', UINT64_C(62008590624)},
         {'B', UINT64_C(213305257967640)},
-        {'L', UINT64_C(1155455191789600832)}
+        {'L', UINT64_C(1153212188068937792)}
     };
 
-    uint64_t alcatraz = UINT64_C(76144522270352976);
-    uint64_t bicube_fuse = UINT64_C(1156723642485260360);
-    uint64_t bicube_fuse_rot = UINT64_C(73423368414642736);
-    uint64_t most_shapes = UINT64_C(73324292116317184);
+    uint64_t bicube_fuse = UINT64_C(1153354739914719560);
 
     graph results = explore(bicube_fuse, &blockers);
     std::cout << "Found shapes: " << results.verts->size() << std::endl;
     std::cout << "Found edges: " << results.edges->size() << std::endl;
-    //for(auto e : *results.verts) 
-    //    std::cout << e << std::endl;
     graph_to_file(results, "C:\\temp\\graph_cpp.csv");
-
     delete results.verts;
     delete results.edges;
     delete results.edgelabels;
+
+    std::vector<uint64_t>* cubes = load_cubes("C:\\Python\\bce_ef\\temp.txt");
+    std::cout << "Cubes loaded from file: " << cubes->size() << std::endl;
+    explore_all(cubes, &blockers);
     std::cin.ignore();
     return 0;
 }
