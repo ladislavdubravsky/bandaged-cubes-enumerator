@@ -275,6 +275,55 @@ def gencode(mapping, cycles):
     return {"map": map_code, "turn": turn_code}
 
 
+def genrots(mapping):
+    """ Generate code for cube rotation functions. """
+    code = ""
+    cycles = {"x": [["dBr", "Dfr", "uFr", "Ubr"], ["uBr", "Dbr", "dFr", "Ufr"],
+                    ["ru", "rb", "rd", "rf"], ["uFl", "Ubl", "dBl", "Dfl"],
+                    ["Dbl", "dFl", "Ufl", "uBl"], ["lu", "lb", "ld", "lf"],
+                    ["fu", "ub", "bd", "df"], ["fd", "uf", "bu", "db"],
+                    ["fl", "ul", "bl", "dl"], ["fr", "ur", "br", "dr"],
+                    ["ufL", "ubL", "dbL", "dfL"], ["ufR", "ubR", "dbR", "dfR"]],
+              "y": [["Ufl", "ufR", "Dfr", "dfL"], ["dfR", "Dfl", "ufL", "Ufr"],
+                    ["fu", "fr", "fd", "fl"], ["Dbr", "dbL", "Ubl", "ubR"],
+                    ["ubL", "Ubr", "dbR", "Dbl"], ["bd", "bl", "bu", "br"],
+                    ["ul", "ru", "dr", "ld"], ["ur", "rd", "dl", "lu"],
+                    ["uf", "rf", "df", "lf"], ["ub", "rb", "db", "lb"],
+                    ["uFl", "uFr", "dFr", "dFl"], ["uBl", "uBr", "dBr", "dBl"]],
+              "z": [["uFr", "ubR", "uBl", "ufL"], ["ufR", "uBr", "ubL", "uFl"],
+                    ["uf", "ur", "ub", "ul"], ["dfL", "dFr", "dbR", "dBl"],
+                    ["dfR", "dBr", "dbL", "dFl"], ["df", "dr", "db", "dl"],
+                    ["fl", "rf", "br", "lb"], ["fr", "rb", "bl", "lf"],
+                    ["fu", "ru", "bu", "lu"], ["fd", "rd", "bd", "ld"],
+                    ["Ufl", "Ufr", "Ubr", "Ubl"], ["Dfl", "Dfr", "Dbr", "Dbl"]]}
+    code += genrots_c(mapping, cycles, "")
+    cyclesi = {axis: [list(reversed(c)) for c in cycles[axis]] for axis in "xyz"}
+    code += genrots_c(mapping, cyclesi, "i")
+    cycles2 = {axis: [[[c[0], c[2]], [c[1], c[3]]] for c in cycles[axis]] for axis in "xyz"}
+    cycles2 = {axis: [d for c in cycles2[axis] for d in c] for axis in "xyz"}
+    code += genrots_c(mapping, cycles2, "2")
+    return code
+
+
+def genrots_c(mapping, cycles, postfix):
+    turn_code = ""
+    for rot in "xyz":
+        shifts = {}
+        for c in cycles[rot]:
+            for i in range(len(c)):
+                diff = mapping[c[i]] - mapping[c[(i + 1) % len(c)]]
+                shifts[diff] = shifts.get(diff, 0) + 2**mapping[c[i]]
+
+        turn_cube = "def turn_{0}(cube):\n    return np.bitwise_or.reduce([{1}])"
+        shift_code = "\n        np.{0}_shift(np.bitwise_and(cube, np.uint64({1})), np.uint64({2})),"
+        transf = ""
+        for s, mask in shifts.items():
+            transf += shift_code.format("left" if s < 0 else "right", mask, abs(s))
+        turn_cube = turn_cube.format(rot + postfix, transf)
+        turn_code += "\n\n" + turn_cube
+    return turn_code
+
+
 def gencode_cpp(mapping, cycles):
     """ Generate parts of code for enumerator based on chosen mapping, C++. """
     turn_code = ""
@@ -318,28 +367,29 @@ def gencode_cpp(mapping, cycles):
     return {"turn": turn_code, "blockers": blockers}
 
 
-# calculation of optimal placements
-maps = []
-cycles = CYCLES_ALL[:12]
-search(cycles, maps)
-print("Min score:", min([check_map(m, cycles) for m in maps]))
-check_map(maps[0], cycles, printout=True)
+def main():
+    # calculation of optimal placements
+    maps = []
+    cycles = CYCLES_ALL[:12]
+    search(cycles, maps)
+    print("Min score:", min([check_map(m, cycles) for m in maps]))
+    check_map(maps[0], cycles, printout=True)
 
-# 2nd phase
-cycles2 = CYCLES_ALL[12:]
-vals = maps[0].values()
-maps2 = []
-place_cycle(cycles2,
-            {"max": max(vals), "min": min(vals), **maps[0]},
-            set(vals),
-            {'u': 2, 'f': 9, 'r': 14, 'd': 4, 'l': 8, 'b': 9},
-            maps2)
-len(maps2)
-min([check_map(m, CYCLES_ALL) for m in maps2])
+    # 2nd phase
+    cycles2 = CYCLES_ALL[12:]
+    vals = maps[0].values()
+    maps2 = []
+    place_cycle(cycles2,
+                {"max": max(vals), "min": min(vals), **maps[0]},
+                set(vals),
+                {'u': 2, 'f': 9, 'r': 14, 'd': 4, 'l': 8, 'b': 9},
+                maps2)
+    len(maps2)
+    min([check_map(m, CYCLES_ALL) for m in maps2])
 
-# generate some Python and C++ code for enumerator based on selected mapping
-code = gencode(maps2[0], CYCLES_ALL)
-print(code["turn"])
-code_cpp = gencode_cpp(maps2[0], CYCLES_ALL)
-print(code_cpp["turn"])
-print(code_cpp["blockers"])
+    # generate some Python and C++ code for enumerator based on selected mapping
+    code = gencode(maps2[0], CYCLES_ALL)
+    print(code["turn"])
+    code_cpp = gencode_cpp(maps2[0], CYCLES_ALL)
+    print(code_cpp["turn"])
+    print(code_cpp["blockers"])
