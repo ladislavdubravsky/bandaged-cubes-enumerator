@@ -1,6 +1,9 @@
 import numpy as np
 import csv
 from collections import deque
+import bce.core as c
+from bce.graphics import draw_cubes as draw
+from representation_finder import genrots
 
 # mapping of pairs to bitarray positions found by backtracking optimizer
 MAPPING = {"uFr": 42, "ubR": 44, "uBl": 46, "ufL": 48,
@@ -67,16 +70,17 @@ def enumerate_analytic():
     p3 = 1 + 2*p2*p1 - 1
     p22 = 1 + 2*p2**2 - 1
     p32 = 1 + 2*p22*p2 + p3**2 - p2**3 - 2*p2**2 + 1
-    p33 = 1 + p32*p3
+    p33 = p32*p3
     p22c = 1 + 2*p2 - 1
     p222 = 1 + 3*p22*p22c - 3*p2**3 + 1
     p3c = 1
     p32c = 1 + 2*p22c*p2 + p3*p3c - p2**2 - 2*p2**1 + 1
-    p322 = 1 + 2*p32*p32c + 2*p222*p22 - p3**3 - 4*p2**2*p22c*p22 - p22**2*p22c + 2*p2**3 + 2*p2**5 - 1
-    p33c = 1 + p32c*p3
-    p332 = 1 + p33*p33c + p322*p32 - p32*p32c*p3**2
+    p322 = (1 + 2*p32*p32c + 2*p222*p22 - p3**3 - 4*p2**2*p22c*p22 - p22**2*p22c
+            + 2*p2**3 + 2*p2**5 - 1)
+    p33c = p32c*p3
+    p332 = p33*p33c + p322*p32 - p32*p32c*p3**2
     p333 = 1 + p332*p33
-    return p333  # 6473251
+    return p333  # 6399617
 
 
 def get_slots(pair):
@@ -171,6 +175,10 @@ def from_bitarray(bitarray, mapping, pprint=True):
             renumber[v] = blockno
             blockno += 1
     cubelist = [renumber[b] for b in cubelist]
+    # set core cubie correctly
+    centers = [cubelist[i] for i in [4, 10, 12, 14, 16, 22]]
+    if len(set(centers)) < 6:
+        cubelist[13] = max(centers, key=centers.count)
 
     if pprint:  # pretty print
         for i, block in enumerate(cubelist):
@@ -178,6 +186,21 @@ def from_bitarray(bitarray, mapping, pprint=True):
                 print("\n", ((8 - i // 3) % 3)*" ", end="")
             print(str(block).zfill(2), end=" ")
     return cubelist
+
+
+def do(bitarray, moves):
+    res = np.copy(bitarray)
+    for m in moves.split():
+        res = turn(m, res)
+    return res
+
+
+def min_rot(bitarray):
+    """ Find rotation of cube with smallest bitarray representation. """
+    rots = ["x", "x2", "x'", "y", "y2", "y'", "x z", "x z2", "x z'",
+            "x2 y", "x2 y2", "x2 y'", "x' z", "x' z2", "x' z'",
+            "z", "z x", "z x2", "z x'", "z'", "z' x", "z' x2", "z' x'"]
+    return min(do(bitarray, rot) for rot in rots)
 
 
 def split(clist, res, cmax):
@@ -198,7 +221,7 @@ def split(clist, res, cmax):
             res.add(newcl_b)
             split(newclist, res, cmax + 1)
 
-    if len(res) % 100000 == 0:
+    if len(res) % 1000 == 0:
         print(len(res))
     for i in range(1, cmax + 1):
         block = np.where(clist == i)[0]
@@ -223,8 +246,8 @@ def split(clist, res, cmax):
             # into 22 and 222
             newb1 = block[[4, 5, 10, 11]]
             split_to_blocks(newb1, clist, res, cmax)
-            newb1 = block[[0, 1, 6, 7]]
-            split_to_blocks(newb1, clist, res, cmax)
+            # newb1 = block[[0, 1, 6, 7]]
+            # split_to_blocks(newb1, clist, res, cmax)
         elif lb == 9:  # 33 block
             # into 3 and 32
             newb1 = block[::3]  # aligned with the 332 vertical cut
@@ -330,19 +353,16 @@ def turn_b(cube):
         np.bitwise_and(cube, np.uint64(17220585146399195135))])
 
 
+# cube rotations (turn_x, turn_xi, ...) definitions
+exec(genrots(MAPPING))
+
+
 def turn(face, cube):
-    if face == 'U':
-        return turn_u(cube)
-    if face == 'F':
-        return turn_f(cube)
-    if face == 'R':
-        return turn_r(cube)
-    if face == 'D':
-        return turn_d(cube)
-    if face == 'L':
-        return turn_l(cube)
-    if face == 'B':
-        return turn_b(cube)
+    dsp = {"U": turn_u, "F": turn_f, "R": turn_r, "D": turn_d, "B": turn_b,
+           "L": turn_l, "x": turn_x, "y": turn_y, "z": turn_z, "x'": turn_xi,
+           "y'": turn_yi, "z'": turn_zi, "x2": turn_x2, "y2": turn_y2,
+           "z2": turn_z2}
+    return dsp[face](cube)
 
 
 def explore(initcube, blockers):
@@ -387,3 +407,28 @@ def explore_fast(initcube, blockers, res):
                 if new not in verts and new not in tovisit:
                     tovisit.append(new)
     return verts
+
+
+def enumerate_by_splitting():
+    res = set()
+    split(np.array([  1, 2, 2,
+                     1, 2, 2,
+                    1, 2, 2,
+                      3, 4, 4,
+                     3, 4, 4,
+                    3, 4, 4,
+                      5, 6, 6,
+                     5, 6, 6,
+                    5, 6, 6], dtype=np.uint8), res, 6)
+    print(len(res))
+    split(np.array([  1, 2, 2,
+                     1, 2, 2,
+                    1, 2, 2,
+                      3, 4, 4,
+                     3, 4, 4,
+                    3, 4, 4,
+                      3, 4, 4,
+                     3, 4, 4,
+                    3, 4, 4], dtype=np.uint8), res, 4)
+    print(len(res))
+    return res
