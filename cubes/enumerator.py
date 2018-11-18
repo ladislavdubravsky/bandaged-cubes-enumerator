@@ -1,5 +1,6 @@
 import numpy as np
 import csv
+import bisect
 from collections import deque
 import bce.core as c
 from bce.graphics import draw_cubes as draw
@@ -70,15 +71,15 @@ def enumerate_analytic():
     p3 = 1 + 2*p2*p1 - 1
     p22 = 1 + 2*p2**2 - 1
     p32 = 1 + 2*p22*p2 + p3**2 - p2**3 - 2*p2**2 + 1
-    p33 = p32*p3
+    p33 = 1 + p32*p3
     p22c = 1 + 2*p2 - 1
     p222 = 1 + 3*p22*p22c - 3*p2**3 + 1
     p3c = 1
     p32c = 1 + 2*p22c*p2 + p3*p3c - p2**2 - 2*p2**1 + 1
     p322 = (1 + 2*p32*p32c + 2*p222*p22 - p3**3 - 4*p2**2*p22c*p22 - p22**2*p22c
             + 2*p2**3 + 2*p2**5 - 1)
-    p33c = p32c*p3
-    p332 = p33*p33c + p322*p32 - p32*p32c*p3**2
+    p33c = 1 + p32c*p3
+    p332 = 1 + p33*p33c + p322*p32 - p32*p32c*p3**2
     p333 = 1 + p332*p33
     return p333  # 6399617
 
@@ -135,8 +136,8 @@ def into_bitarray_gencode(mapping):
          21 22 23
         24 25 26
     """
-    code = ["def into_bitarray_fast(c):\n    res=0\n"]
-    cond = "    if c[{0}] == c[{1}]:\n        res += {2}\n"
+    code = ["def into_bitarray_fast(c):\n    res=18446744073709551615\n"]
+    cond = "    if c[{0}] != c[{1}]:\n        res -= {2}\n"
     for pair in PAIRS:
         c1, c2 = get_slots(pair)
         code.append(cond.format(c1, c2, 2 ** mapping[pair]))
@@ -197,107 +198,113 @@ def do(bitarray, moves):
 
 def min_rot(bitarray):
     """ Find rotation of cube with smallest bitarray representation. """
-    rots = ["x", "x2", "x'", "y", "y2", "y'", "x z", "x z2", "x z'",
+    rots = ["", "x", "x2", "x'", "y", "y2", "y'", "x z", "x z2", "x z'",
             "x2 y", "x2 y2", "x2 y'", "x' z", "x' z2", "x' z'",
             "z", "z x", "z x2", "z x'", "z'", "z' x", "z' x2", "z' x'"]
     return min(do(bitarray, rot) for rot in rots)
 
 
-def split(clist, res, cmax):
+def split(clist, res, blocks_to_split, cmax):
     """
     Keep recursively splitting fully bandaged (isomorphic to 1x1) 3x3 cube by
-    planes to enumerate all interesting bandaged cubes.
+    planes to enumerate all interesting bandage shapes.
     :param clist: cubelist representation of bandage shape
     :param res: reference to set with enumerated cubelists in bitarray
         representation
-    :param cmax: number of blocks in current cubelist
+    :param blocks_to_split: blocks allowed to be splitted - not having all
+        blocks allowed to be splitted at all times prevents rediscovering
+        same bandage shapes by many different splitting sequences
+    :param cmax: maximum of clist
     """
-    def split_to_blocks(block1, clist, res, cmax):
+    def split_to_blocks(block1, clist, res, blocks_to_split, cmax, sizes, bn):
         """ Try to add result to hash set and continue splitting. """
         newclist = np.array(clist)
         newclist[block1] = cmax + 1
         newcl_b = into_bitarray_fast(newclist)
         if newcl_b not in res:
             res.add(newcl_b)
-            split(newclist, res, cmax + 1)
+            new_bts = list(blocks_to_split)
+            bisect.insort(new_bts, (sizes[0], cmax + 1))
+            bisect.insort(new_bts, (sizes[1], bn))
+            split(newclist, res, new_bts, cmax + 1)
 
-    if len(res) % 1000 == 0:
+    if len(res) % 100000 == 0:
         print(len(res))
-    for i in range(1, cmax + 1):
-        block = np.where(clist == i)[0]
-        lb = block.size
-        if lb == 27:  # 333 starting block
+    for i, (blocksize, blockno) in enumerate(blocks_to_split):
+        block = np.where(clist == blockno)[0]
+        new_bts = blocks_to_split[:i]
+        if blocksize == 27:  # 333 starting block
             # into 33 and 332
             newb1 = block[:9]
-            split_to_blocks(newb1, clist, res, cmax)
-        elif lb == 18:  # 332 block
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (9, 18), blockno)
+        elif blocksize == 18:  # 332 block
             # into 33s
             newb1 = block[:9]
-            split_to_blocks(newb1, clist, res, cmax)
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (9, 9), blockno)
             # into 32 and 322
             newb1 = block[::3]
-            split_to_blocks(newb1, clist, res, cmax)
-        elif lb == 12:  # 322 block
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (6, 12), blockno)
+        elif blocksize == 12:  # 322 block
             # into 32s
             newb1 = block[::2]
-            split_to_blocks(newb1, clist, res, cmax)
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (6, 6), blockno)
             newb1 = block[:6]
-            split_to_blocks(newb1, clist, res, cmax)
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (6, 6), blockno)
             # into 22 and 222
             newb1 = block[[4, 5, 10, 11]]
-            split_to_blocks(newb1, clist, res, cmax)
-            # newb1 = block[[0, 1, 6, 7]]
-            # split_to_blocks(newb1, clist, res, cmax)
-        elif lb == 9:  # 33 block
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (4, 8), blockno)
+            newb1 = block[[0, 1, 6, 7]]
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (4, 8), blockno)
+        elif blocksize == 9:  # 33 block
             # into 3 and 32
             newb1 = block[::3]  # aligned with the 332 vertical cut
-            split_to_blocks(newb1, clist, res, cmax)
-        elif lb == 8:  # 222 block
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (3, 6), blockno)
+        elif blocksize == 8:  # 222 block
             # into 22s
             newb1 = block[:4]
-            split_to_blocks(newb1, clist, res, cmax)
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (4, 4), blockno)
             newb1 = block[::2]
-            split_to_blocks(newb1, clist, res, cmax)
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (4, 4), blockno)
             newb1 = block[[0, 1, 4, 5]]
-            split_to_blocks(newb1, clist, res, cmax)
-        elif lb == 6:  # 32 block
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (4, 4), blockno)
+        elif blocksize == 6:  # 32 block
             if (block[0] + 2 == block[1] + 1 == block[2] or  # orientation 1
                     block[0] + 6 == block[1] + 3 == block[2]):  # orientation 2
                 # into 2 and 22
                 newb1 = block[[0, 3]]
-                split_to_blocks(newb1, clist, res, cmax)
+                split_to_blocks(newb1, clist, res, new_bts, cmax, (2, 4), blockno)
                 newb1 = block[[2, 5]]
-                split_to_blocks(newb1, clist, res, cmax)
+                split_to_blocks(newb1, clist, res, new_bts, cmax, (2, 4), blockno)
                 # into 3s
                 newb1 = block[:3]
-                split_to_blocks(newb1, clist, res, cmax)
+                split_to_blocks(newb1, clist, res, new_bts, cmax, (3, 3), blockno)
             elif block[1] + 2 == block[2]:  # orientation 3
                 # into 2 and 22
                 newb1 = block[:2]
-                split_to_blocks(newb1, clist, res, cmax)
+                split_to_blocks(newb1, clist, res, new_bts, cmax, (2, 4), blockno)
                 newb1 = block[:4]
-                split_to_blocks(newb1, clist, res, cmax)
+                split_to_blocks(newb1, clist, res, new_bts, cmax, (4, 2), blockno)
                 # into 3s
                 newb1 = block[::2]
-                split_to_blocks(newb1, clist, res, cmax)
+                split_to_blocks(newb1, clist, res, new_bts, cmax, (3, 3), blockno)
             else:
                 raise Exception("Unexpected 32 block orientation!")
-        elif lb == 4:  # 22 block
+        elif blocksize == 4:  # 22 block
             # into 2s
             newb1 = block[:2]
-            split_to_blocks(newb1, clist, res, cmax)
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (2, 2), blockno)
             newb1 = block[::2]
-            split_to_blocks(newb1, clist, res, cmax)
-        elif lb == 3:  # 3 block
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (2, 2), blockno)
+        elif blocksize == 3:  # 3 block
             # into 1 and 2
             newb1 = block[:2]
-            split_to_blocks(newb1, clist, res, cmax)
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (2, 1), blockno)
             newb1 = block[1:]
-            split_to_blocks(newb1, clist, res, cmax)
-        elif lb == 2:  # 2 block
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (2, 1), blockno)
+        elif blocksize == 2:  # 2 block
             # into 1 and 1
             newb1 = block[[0]]
-            split_to_blocks(newb1, clist, res, cmax)
+            split_to_blocks(newb1, clist, res, new_bts, cmax, (1, 1), blockno)
 
 
 # generated functions for face turns
