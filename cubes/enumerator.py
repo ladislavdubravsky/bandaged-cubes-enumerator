@@ -439,3 +439,24 @@ def enumerate_by_splitting():
                     3, 4, 4], dtype=np.uint8), res, 4)
     print(len(res))
     return res
+
+
+def export_graph(path, edges, edgelabels):
+    """ Export graph to csv. """
+    with open(path, "w") as f:
+        writer = csv.writer(f)
+        writer.writerows([[e[0], e[1], edgelabels[e]] for e in edges])
+
+
+def save_cubes(path, cubes):
+    with open(path, 'w') as f:
+        for cube in cubes:
+            f.write("%s\n" % cube)
+
+
+def load_cubes(path):
+    cubes = []
+    with open(path, 'r') as f:
+        for row in f:
+            cubes.append(np.uint64(row))
+    return cubes
