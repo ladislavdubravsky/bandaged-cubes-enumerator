@@ -9,6 +9,8 @@
 #include <utility>
 
 
+const uint64_t USED_SLOTS = UINT64_C(10452854664125697535);
+
 using edge = std::pair<int, int>;  
 enum Turns { u, f, r, d, b, l, id, x, x2, xi, y, y2, yi, xz, xz2, xzi, x2y,
              x2y2, x2yi, xiz, xiz2, xizi, z, zx, zx2, zxi, zi, zix, zix2, zixi };
@@ -22,9 +24,10 @@ struct graph {
 
 
 uint64_t turn(Turns face, uint64_t cube);
+void save_cubes(std::vector<uint64_t>* cubes, std::string path);
 
 
-graph explore(uint64_t initcube, std::map<Turns, uint64_t>* blockers)
+graph explore_single(uint64_t initcube, std::map<Turns, uint64_t>* blockers)
 {
     std::deque<uint64_t> to_visit(1, initcube);
     auto verts = new std::unordered_set<uint64_t>;
@@ -60,8 +63,8 @@ graph explore(uint64_t initcube, std::map<Turns, uint64_t>* blockers)
 }
 
 
-void explore_fast(uint64_t initcube, std::map<Turns, uint64_t>* blockers,
-                  std::unordered_set<uint64_t>* cubes)
+void explore_bfs(uint64_t initcube, std::map<Turns, uint64_t>* blockers,
+                 std::unordered_set<uint64_t>* cubes)
 {
     std::deque<uint64_t> to_visit(1, initcube);
     auto verts = new std::unordered_set<uint64_t>;
@@ -94,8 +97,41 @@ void explore_fast(uint64_t initcube, std::map<Turns, uint64_t>* blockers,
 }
 
 
-void explore_all(std::unordered_set<uint64_t>* cubes,
-                 std::map<Turns, uint64_t>* blockers)
+void visit(uint64_t cube, std::map<Turns, uint64_t>* blockers,
+           std::unordered_set<uint64_t>* verts, uint64_t* implicit_bonds)
+{
+    verts->insert(cube);
+    for(Turns face: std::vector<Turns> { u, f, r, d, b, l }) {
+        if ((cube & (*blockers)[face]) == 0) {
+            uint64_t newcube = turn(face, cube);
+            *implicit_bonds = *implicit_bonds & ~(*blockers)[face];
+            *implicit_bonds = turn(face, *implicit_bonds);
+            if (verts->find(newcube) == verts->end()) {
+                visit(newcube, blockers, verts, implicit_bonds);
+            }
+            *implicit_bonds = turn(face, turn(face, turn(face, *implicit_bonds)));
+        }
+    }
+}
+
+
+uint64_t explore_dfs(uint64_t initcube, std::map<Turns, uint64_t>* blockers)
+{
+    auto verts = new std::unordered_set<uint64_t>;
+    uint64_t* implicit_bonds = new uint64_t;
+    *implicit_bonds = ~initcube & USED_SLOTS;
+    //std::cout << "Implicit bonds start: " << implicit_bonds << std::endl;
+    visit(initcube, blockers, verts, implicit_bonds);
+    //std::cout << "Size from dfs: " << verts->size() << std::endl;
+    //std::cout << "Implicit bonds end: " << implicit_bonds << std::endl;
+    return *implicit_bonds;
+    delete verts;
+    delete implicit_bonds;
+}
+
+
+void filter_rotations(std::unordered_set<uint64_t>* cubes,
+                      std::map<Turns, uint64_t>* blockers)
 {
     int cnt = 0;
     auto res = new std::vector<uint64_t>;
@@ -103,13 +139,38 @@ void explore_all(std::unordered_set<uint64_t>* cubes,
         uint64_t cube = *cubes->begin();
         cubes->erase(cubes->begin());
         res->push_back(cube);
-        explore_fast(cube, blockers, cubes);
+        explore_bfs(cube, blockers, cubes);
         if (cnt % 1000 == 0) {
             std::cout << cnt << std::endl;
         }
         cnt++;
     }
     std::cout << "Remaining cubes:" << res->size() << std::endl;
+    save_cubes(res, "C:\\Temp\\cpp\\no_rot.txt");
+    delete res;
+}
+
+
+void filter_implicit_bonds(std::unordered_set<uint64_t>* cubes,
+                           std::map<Turns, uint64_t>* blockers)
+{
+    int cnt = 0;
+    auto res = new std::vector<uint64_t>;
+    while (!cubes->empty()) {
+        uint64_t cube = *cubes->begin();
+        cubes->erase(cubes->begin());
+        uint64_t implicit_bonds = explore_dfs(cube, blockers);
+        cube = cube | implicit_bonds;
+        if (std::find(res->begin(), res->end(), cube) == res->end()) {
+            res->push_back(cube);
+        }
+        if (cnt % 1000 == 0) {
+            std::cout << cnt << std::endl;
+        }
+        cnt++;
+    }
+    std::cout << "Remaining cubes:" << res->size() << std::endl;
+    save_cubes(res, "C:\\Temp\\cpp\\ibonds.txt");
     delete res;
 }
 
@@ -168,18 +229,21 @@ main(int argc, char const *argv[])
     };
 
     uint64_t bicube_fuse = UINT64_C(1153354739914719560);
+    uint64_t ibtest = UINT64_C(9223372062893147136);
 
-    graph results = explore(bicube_fuse, &blockers);
+    graph results = explore_single(bicube_fuse, &blockers);
     std::cout << "Found shapes: " << results.verts->size() << std::endl;
     std::cout << "Found edges: " << results.edges->size() << std::endl;
     save_graph(results, "C:\\temp\\graph_cpp.csv");
+    explore_dfs(ibtest, &blockers);
     delete results.verts;
     delete results.edges;
     delete results.edgelabels;
 
-    std::unordered_set<uint64_t>* cubes = load_cubes("C:\\temp\\cpp\\all_cubes.txt");
+    std::unordered_set<uint64_t>* cubes = load_cubes("C:\\temp\\cpp\\norot.txt");
     std::cout << "Cubes loaded from file: " << cubes->size() << std::endl;
-    explore_all(cubes, &blockers);
+    //filter_rotations(cubes, &blockers);
+    filter_implicit_bonds(cubes, &blockers);
     delete cubes;
     std::cin.ignore();
     return 0;
