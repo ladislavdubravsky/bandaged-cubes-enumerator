@@ -1,7 +1,6 @@
 """ Find mappings of adjacent cubie pairs into 64-bit register positions
 minimizing number of instructions needed for face turn permutations. """
 
-
 CYCLES_ALL = [['uFr', 'ubR', 'uBl', 'ufL'], ['uFr', 'Ubr', 'dBr', 'Dfr'],
               ['Ufl', 'dfL', 'Dfr', 'ufR'], ['ufR', 'uBr', 'ubL', 'uFl'],
               ['ubR', 'Dbr', 'dbL', 'Ubl'], ['uFl', 'Ubl', 'dBl', 'Dfl'],
@@ -243,40 +242,72 @@ def check_map(mapping, cycles, printout=False):
     return score
 
 
-def gencode(mapping, cycles):
-    """ Generate parts of code for enumerator based on chosen mapping. """
-    map_code = "MAPPING = {"
-    turn_code = ""
-
+def gencode_mapliteral(cycles, mapping):
+    """ Generate nicely formatted mapping literal. """
+    code = "MAPPING = {"
     for face in "ufrdlb":
-        shifts = {}
         facecycles = [c for c in cycles if all(face in pair for pair in c)]
         for c in facecycles:
             sortedc = sorted(c, key=mapping.get)
-            map_code += ', '.join('"{0}": {1}'.format(p, mapping[p]) for p in sortedc)
-            map_code += ',\n' + 11*" "
-            diff = mapping[sortedc[0]] - mapping[sortedc[1]]
-            shifts[diff] = (shifts.get(diff, 0)
-                            + sum(2**mapping[sortedc[i]] for i in [0, 1, 2]))
-            shifts[-3*diff] = shifts.get(-3*diff, 0) + 2**mapping[sortedc[3]]
+            code += ', '.join('"{0}": {1}'.format(p, mapping[p]) for p in sortedc)
+            code += ',\n' + 11 * " "
+    return code[:-13] + '}'
 
-        turn_face = "def turn_{0}(cube):\n    return np.bitwise_or.reduce([{1}])"
-        shift_code = "\n        np.{0}_shift(np.bitwise_and(cube, np.uint64({1})), np.uint64({2})),"
-        transf = ""
-        for s, mask in shifts.items():
+
+def gencode_cycles(cycles, mapping, postfix, py=True):
+    """ Generate bitwise arithmetic-heavy code implementing permutation composed
+    of given cycles. Generates Python or C++ code. """
+    shifts = {}
+    for c in cycles:
+        for i in range(len(c)):
+            diff = mapping[c[i]] - mapping[c[(i + 1) % len(c)]]
+            shifts[diff] = shifts.get(diff, 0) + 2**mapping[c[i]]
+    if py:
+        code = "def turn_{0}(cube):\n    return np.bitwise_or.reduce([{1}])"
+        shift_code = "\n        np.{0}_shift(np.bitwise_and(cube, np.uint64({1})), np.uint64({2})), "
+    else:
+        code = "uint64_t turn_{0}(uint64_t cube)\n{{\n    return {1};\n}}"
+        shift_code = "\n        ((cube & UINT64_C({1})) {0} {2}) |"
+    transf = ""
+    for s, mask in shifts.items():
+        if py:
             transf += shift_code.format("left" if s < 0 else "right", mask, abs(s))
-        resti = set(range(64)) - set([mapping[p] for c in facecycles for p in c])
-        rest = sum(2**i for i in resti)
-        transf += "\n        np.bitwise_and(cube, np.uint64({0}))".format(rest)
-        turn_face = turn_face.format(face, transf)
-        turn_code += "\n\n" + turn_face
-        
-    map_code = map_code[:-13] + '}'
-    return {"map": map_code, "turn": turn_code}
+        else:
+            transf += shift_code.format("<<" if s < 0 else ">>", mask, abs(s))
+    resti = set(mapping.values()) - set([mapping[p] for c in cycles for p in c])
+    rest = sum(2**i for i in resti)
+    if rest > 0:
+        if py:
+            transf += "\n        np.bitwise_and(cube, np.uint64({0}))".format(rest)
+        else:
+            transf += "\n        (cube & UINT64_C({0}))".format(rest)
+        code = code.format(postfix, transf)
+    else:
+        code = code.format(postfix, transf[:-2])
+    return code
 
 
-def genrots(mapping):
-    """ Generate code for cube rotation functions. """
+def gencode_mirror(mapping, py=True):
+    """ Generate code for the single needed cube reflection. """
+    cycles = [["uFr", "uFl"], ["uBr", "uBl"], ["ufR", "ufL"], ["ubR", "ubL"],
+              ["ul", "ur"], ["dFr", "dFl"], ["dBr", "dBl"], ["dfR", "dfL"],
+              ["dbR", "dbL"], ["dl", "dr"], ["fl", "fr"], ["bl", "br"],
+              ["ru", "lu"], ["rf", "lf"], ["rd", "ld"], ["rb", "lb"],
+              ["Dfr", "Dfl"], ["Dbr", "Dbl"], ["Ufr", "Ufl"], ["Ubr", "Ubl"]]
+    return gencode_cycles(cycles, mapping, "mir", py=py)
+
+
+def gencode_faceturns(cycles, mapping, py=True):
+    """ Generate code for face turns. """
+    code = ""
+    for face in "ufrdlb":
+        facecycles = [c for c in cycles if all(face in pair for pair in c)]
+        code = code + "\n\n" + gencode_cycles(facecycles, mapping, face, py=py)
+    return code
+
+
+def gencode_rots(mapping, py=True):
+    """ Generate code for cube rotations. """
     code = ""
     cycles = {"x": [["dBr", "Dfr", "uFr", "Ubr"], ["uBr", "Dbr", "dFr", "Ufr"],
                     ["ru", "rb", "rd", "rf"], ["uFl", "Ubl", "dBl", "Dfl"],
@@ -296,60 +327,18 @@ def genrots(mapping):
                     ["fl", "rf", "br", "lb"], ["fr", "rb", "bl", "lf"],
                     ["fu", "ru", "bu", "lu"], ["fd", "rd", "bd", "ld"],
                     ["Ufl", "Ufr", "Ubr", "Ubl"], ["Dfl", "Dfr", "Dbr", "Dbl"]]}
-    code += genrots_c(mapping, cycles, "")
     cyclesi = {axis: [list(reversed(c)) for c in cycles[axis]] for axis in "xyz"}
-    code += genrots_c(mapping, cyclesi, "i")
     cycles2 = {axis: [[[c[0], c[2]], [c[1], c[3]]] for c in cycles[axis]] for axis in "xyz"}
     cycles2 = {axis: [d for c in cycles2[axis] for d in c] for axis in "xyz"}
-    code += genrots_c(mapping, cycles2, "2")
+    for rot in "xyz":
+        code += "\n\n" + gencode_cycles(cycles[rot], mapping, rot, py=py)
+        code += "\n\n" + gencode_cycles(cyclesi[rot], mapping, rot + "i", py=py)
+        code += "\n\n" + gencode_cycles(cycles2[rot], mapping, rot + "2", py=py)
     return code
 
 
-def genrots_c(mapping, cycles, postfix):
-    turn_code = ""
-    for rot in "xyz":
-        shifts = {}
-        for c in cycles[rot]:
-            for i in range(len(c)):
-                diff = mapping[c[i]] - mapping[c[(i + 1) % len(c)]]
-                shifts[diff] = shifts.get(diff, 0) + 2**mapping[c[i]]
-
-        turn_cube = "def turn_{0}(cube):\n    return np.bitwise_or.reduce([{1}])"
-        shift_code = "\n        np.{0}_shift(np.bitwise_and(cube, np.uint64({1})), np.uint64({2})),"
-        transf = ""
-        for s, mask in shifts.items():
-            transf += shift_code.format("left" if s < 0 else "right", mask, abs(s))
-        turn_cube = turn_cube.format(rot + postfix, transf)
-        turn_code += "\n\n" + turn_cube
-    return turn_code
-
-
-def gencode_cpp(mapping, cycles):
-    """ Generate parts of code for enumerator based on chosen mapping, C++. """
-    turn_code = ""
-
-    for face in "ufrdlb":
-        shifts = {}
-        facecycles = [c for c in cycles if all(face in pair for pair in c)]
-        for c in facecycles:
-            sortedc = sorted(c, key=mapping.get)
-            diff = mapping[sortedc[0]] - mapping[sortedc[1]]
-            shifts[diff] = (shifts.get(diff, 0)
-                            + sum(2 ** mapping[sortedc[i]] for i in [0, 1, 2]))
-            shifts[-3 * diff] = shifts.get(-3 * diff, 0) + 2 ** mapping[
-                sortedc[3]]
-
-        turn_face = "uint64_t turn_{0}(uint64_t cube)\n{{\n    return {1};"
-        shift_code = "\n        ((cube & UINT64_C({1})) {0} {2}) |"
-        transf = ""
-        for s, mask in shifts.items():
-            transf += shift_code.format("<<" if s < 0 else ">>", mask, abs(s))
-        resti = set(range(64)) - set([mapping[p] for c in facecycles for p in c])
-        rest = sum(2**i for i in resti)
-        transf += "\n        (cube & UINT64_C({0}))".format(rest)
-        turn_face = turn_face.format(face, transf)
-        turn_code += turn_face + "\n}\n\n"
-
+def gencode_blockers(mapping):
+    """ Only needed for C++.  """
     blockers = """
     std::map<char, uint64_t> blockers {{
         {{'U', UINT64_C({0})}},
@@ -364,7 +353,7 @@ def gencode_cpp(mapping, cycles):
         turnable[f] = sum(2**v for k, v in mapping.items() if f in k or
                           (len(k) == 2 and f.lower() == k[1]))
     blockers = blockers.format(*[turnable[f] for f in 'UFRDBL'])
-    return {"turn": turn_code, "blockers": blockers}
+    return blockers
 
 
 def main():
@@ -387,9 +376,8 @@ def main():
     len(maps2)
     min([check_map(m, CYCLES_ALL) for m in maps2])
 
-    # generate some Python and C++ code for enumerator based on selected mapping
-    code = gencode(maps2[0], CYCLES_ALL)
-    print(code["turn"])
-    code_cpp = gencode_cpp(maps2[0], CYCLES_ALL)
-    print(code_cpp["turn"])
-    print(code_cpp["blockers"])
+    # generate C++ code for enumerator based on selected mapping
+    print(gencode_blockers(MAPPING))
+    print(gencode_faceturns(CYCLES, MAPPING, py=False))
+    print(gencode_mirror(MAPPING, py=False))
+    print(gencode_rots(MAPPING, py=False))
