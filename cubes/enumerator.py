@@ -4,7 +4,7 @@ import bisect
 from collections import deque
 import bce.core as c
 from bce.graphics import draw_cubes as draw
-from representation_finder import genrots
+from representation_finder import gencode_faceturns, gencode_rots
 
 # mapping of pairs to bitarray positions found by backtracking optimizer
 MAPPING = {"uFr": 42, "ubR": 44, "uBl": 46, "ufL": 48,
@@ -190,18 +190,11 @@ def from_bitarray(bitarray, mapping, pprint=True):
 
 
 def do(bitarray, moves):
+    """ Execute moves on bitarray representation of cube. """
     res = np.copy(bitarray)
     for m in moves.split():
         res = turn(m, res)
     return res
-
-
-def min_rot(bitarray):
-    """ Find rotation of cube with smallest bitarray representation. """
-    rots = ["", "x", "x2", "x'", "y", "y2", "y'", "x z", "x z2", "x z'",
-            "x2 y", "x2 y2", "x2 y'", "x' z", "x' z2", "x' z'",
-            "z", "z x", "z x2", "z x'", "z'", "z' x", "z' x2", "z' x'"]
-    return min(do(bitarray, rot) for rot in rots)
 
 
 def split(clist, res, blocks_to_split, cmax):
@@ -213,7 +206,8 @@ def split(clist, res, blocks_to_split, cmax):
         representation
     :param blocks_to_split: blocks allowed to be splitted - not having all
         blocks allowed to be splitted at all times prevents rediscovering
-        same bandage shapes by many different splitting sequences
+        same bandage shapes by many different splitting sequences. List of
+        tuples (block size, block index) sorted ascending.
     :param cmax: maximum of clist
     """
     def split_to_blocks(block1, clist, res, blocks_to_split, cmax, sizes, bn):
@@ -307,61 +301,9 @@ def split(clist, res, blocks_to_split, cmax):
             split_to_blocks(newb1, clist, res, new_bts, cmax, (1, 1), blockno)
 
 
-# generated functions for face turns
-def turn_u(cube):
-    return np.bitwise_or.reduce([
-        np.left_shift(np.bitwise_and(cube, np.uint64(92358987743253)), np.uint64(2)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(281475010265152)), np.uint64(6)),
-        np.bitwise_and(cube, np.uint64(18446370239711543210))])
-
-
-def turn_f(cube):
-    return np.bitwise_or.reduce([
-        np.left_shift(np.bitwise_and(cube, np.uint64(281483566907392)), np.uint64(15)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(9223372036854775808)), np.uint64(45)),
-        np.left_shift(np.bitwise_and(cube, np.uint64(806882304)), np.uint64(9)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(412316860416)), np.uint64(27)),
-        np.bitwise_and(cube, np.uint64(9223090140164125695))])
-
-
-def turn_r(cube):
-    return np.bitwise_or.reduce([
-        np.left_shift(np.bitwise_and(cube, np.uint64(567382630219776)), np.uint64(14)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(9295429630892703744)), np.uint64(42)),
-        np.left_shift(np.bitwise_and(cube, np.uint64(42)), np.uint64(2)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(128)), np.uint64(6)),
-        np.bitwise_and(cube, np.uint64(9150747060186627925))])
-
-
-def turn_d(cube):
-    return np.bitwise_or.reduce([
-        np.left_shift(np.bitwise_and(cube, np.uint64(187604175962112)), np.uint64(4)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(2814749834215424)), np.uint64(12)),
-        np.bitwise_and(cube, np.uint64(18443741719699374079))])
-
-
-def turn_l(cube):
-    return np.bitwise_or.reduce([
-        np.left_shift(np.bitwise_and(cube, np.uint64(8640463104)), np.uint64(8)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(2203318222848)), np.uint64(24)),
-        np.left_shift(np.bitwise_and(cube, np.uint64(17184064512)), np.uint64(12)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(70368744177664)), np.uint64(36)),
-        np.bitwise_and(cube, np.uint64(18446671475822623487))])
-
-
-def turn_b(cube):
-    return np.bitwise_or.reduce([
-        np.left_shift(np.bitwise_and(cube, np.uint64(34426978304)), np.uint64(9)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(17592186044416)), np.uint64(27)),
-        np.left_shift(np.bitwise_and(cube, np.uint64(35201560346624)), np.uint64(11)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(72057594037927936)), np.uint64(33)),
-        np.left_shift(np.bitwise_and(cube, np.uint64(1127000492212224)), np.uint64(10)),
-        np.right_shift(np.bitwise_and(cube, np.uint64(1152921504606846976)), np.uint64(30)),
-        np.bitwise_and(cube, np.uint64(17220585146399195135))])
-
-
-# cube rotations (turn_x, turn_xi, ...) definitions
-exec(genrots(MAPPING))
+# generated code for face turns and cube rotations - magic bitwise constants
+exec(gencode_faceturns(CYCLES, MAPPING))
+exec(gencode_rots(MAPPING))
 
 
 def turn(face, cube):
@@ -399,15 +341,15 @@ def explore(initcube, blockers):
     return verts, edges, edgelabels, int2cube, cube2int
 
 
-def explore_fast(initcube, blockers, res):
+def explore_fast(initcube, blockers, cubes):
     """ Version for use in enumeration of equivalence classes.
-        :param res: reference to list of cubes to (try to) drop discovered
-                    cubes from """
+        :param cubes: reference to set of cubes to (try to) drop discovered
+                      cubes from """
     verts, tovisit = set(), deque([initcube])
     while tovisit:
         cube = tovisit.popleft()
         verts.add(cube)
-        res.discard(cube)
+        cubes.discard(cube)
         for face in 'UDRLFB':
             if np.bitwise_and(cube, blockers[face]) == 0:
                 new = turn(face, cube)
@@ -418,25 +360,31 @@ def explore_fast(initcube, blockers, res):
 
 def enumerate_by_splitting():
     res = set()
-    split(np.array([  1, 2, 2,
-                     1, 2, 2,
-                    1, 2, 2,
-                      3, 4, 4,
-                     3, 4, 4,
-                    3, 4, 4,
-                      5, 6, 6,
-                     5, 6, 6,
-                    5, 6, 6], dtype=np.uint8), res, 6)
+    branch1 = [  1, 2, 2,
+                1, 2, 2,
+               1, 2, 2,
+                 3, 4, 4,
+                3, 4, 4,
+               3, 4, 4,
+                 5, 6, 6,
+                5, 6, 6,
+               5, 6, 6]
+    maxid = max(branch1)
+    blocks_to_split = sorted([(branch1.count(i), i) for i in range(1, maxid + 1)])
+    split(np.array(branch1, dtype=np.uint8), res, blocks_to_split, maxid)
     print(len(res))
-    split(np.array([  1, 2, 2,
-                     1, 2, 2,
-                    1, 2, 2,
-                      3, 4, 4,
-                     3, 4, 4,
-                    3, 4, 4,
-                      3, 4, 4,
-                     3, 4, 4,
-                    3, 4, 4], dtype=np.uint8), res, 4)
+    branch2 = [  1, 2, 2,
+                1, 2, 2,
+               1, 2, 2,
+                 3, 4, 4,
+                3, 4, 4,
+               3, 4, 4,
+                 3, 4, 4,
+                3, 4, 4,
+               3, 4, 4]
+    maxid = max(branch2)
+    blocks_to_split = sorted([(branch2.count(i), i) for i in range(1, maxid + 1)])
+    split(np.array(branch2, dtype=np.uint8), res, blocks_to_split, maxid)
     print(len(res))
     return res
 
@@ -460,3 +408,37 @@ def load_cubes(path):
         for row in f:
             cubes.append(np.uint64(row))
     return cubes
+
+
+def filter_faceturns(cubes):
+    """ Way slower than C++ version """
+    cnt = 0
+    res = []
+    while cubes:
+        cube = cubes.pop()
+        res.append(cube)
+        cnt += 1
+        print("Exploring cube number:", cnt, "cubes left:", len(cubes))
+        verts = explore_fast(cube, TURNABLE, cubes)
+        print(len(verts))
+    return res
+
+
+def main():
+    # enumeration phase0
+    phase0 = enumerate_by_splitting()
+    save_cubes(r'C:\temp\cpp\phase0.txt', phase0)
+
+    # single puzzle exploration and export
+    shape = into_bitarray([   7, 7, 0,
+                             7, 7, 0,
+                            0, 0, 0,
+                              1, 1, 6,
+                             1, 1, 5,
+                            2, 3, 4,
+                             1, 1, 6,
+                            1, 1, 5,
+                           2, 3, 4], MAPPING)
+    verts, edges, edgelabels, int2cube, cube2int = explore(shape, TURNABLE)
+    len(verts)
+    export_graph(r"C:\temp\graph.csv", edges, edgelabels)
